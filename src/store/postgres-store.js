@@ -20,7 +20,21 @@ export class PostgresStore {
 
     const store = new PostgresStore({ pool });
     await store.ping();
+    await store.ensureSchema();
     return store;
+  }
+
+  async ensureSchema() {
+    await this.query(`
+      ALTER TABLE devices
+      ADD COLUMN IF NOT EXISTS lorawan_dev_eui BYTEA
+    `);
+
+    await this.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_lorawan_dev_eui
+      ON devices (lorawan_dev_eui)
+      WHERE lorawan_dev_eui IS NOT NULL
+    `);
   }
 
   async withTransaction(callback) {
@@ -51,20 +65,27 @@ export class PostgresStore {
     await this.query("SELECT 1");
   }
 
-  async registerDevice({ deviceId, publicKeyRaw, wallet = null }) {
+  async registerDevice({ deviceId, publicKeyRaw, wallet = null, lorawanDevEui = null }) {
     return this.withTransaction(async (tx) => {
       try {
         await tx.query(
           `
             INSERT INTO devices (
               device_id,
+              lorawan_dev_eui,
               wallet,
               auto_mint_enabled,
               auto_mint_interval_seconds
             )
-            VALUES (decode($1, 'hex'), $2, FALSE, NULL)
+            VALUES (
+              decode($1, 'hex'),
+              CASE WHEN $2::text IS NULL THEN NULL ELSE decode($2::text, 'hex') END,
+              $3,
+              FALSE,
+              NULL
+            )
           `,
-          [deviceId, wallet]
+          [deviceId, lorawanDevEui, wallet]
         );
 
         await tx.query(
@@ -95,6 +116,13 @@ export class PostgresStore {
         );
       } catch (error) {
         if (error.code === "23505") {
+          if (String(error.constraint).includes("lorawan_dev_eui")) {
+            throw new RuleViolationError(
+              `LoRaWAN DevEUI ${lorawanDevEui} is already linked to another device`,
+              "lorawan_dev_eui_already_registered"
+            );
+          }
+
           throw new RuleViolationError(`Device ${deviceId} is already registered`, "device_already_registered");
         }
 
@@ -111,6 +139,7 @@ export class PostgresStore {
         SELECT
           encode(d.device_id, 'hex') AS device_id,
           encode(k.public_key_raw, 'hex') AS public_key_raw,
+          encode(d.lorawan_dev_eui, 'hex') AS lorawan_dev_eui,
           d.wallet,
           d.auto_mint_enabled,
           d.auto_mint_interval_seconds,
@@ -129,24 +158,62 @@ export class PostgresStore {
     return result.rows[0] ? mapDeviceRow(result.rows[0]) : null;
   }
 
-  async saveDevice(device) {
-    await this.query(
+  async getDeviceByLorawanDevEui(lorawanDevEui, { forUpdate = false } = {}) {
+    const result = await this.query(
       `
-        UPDATE devices
-        SET
-          wallet = $2,
-          auto_mint_enabled = $3,
-          auto_mint_interval_seconds = $4,
-          updated_at = NOW()
-        WHERE device_id = decode($1, 'hex')
+        SELECT
+          encode(d.device_id, 'hex') AS device_id,
+          encode(k.public_key_raw, 'hex') AS public_key_raw,
+          encode(d.lorawan_dev_eui, 'hex') AS lorawan_dev_eui,
+          d.wallet,
+          d.auto_mint_enabled,
+          d.auto_mint_interval_seconds,
+          n.last_nonce,
+          d.created_at,
+          d.updated_at
+        FROM devices d
+        JOIN device_public_keys k ON k.device_id = d.device_id
+        LEFT JOIN device_nonces n ON n.device_id = d.device_id
+        WHERE d.lorawan_dev_eui = decode($1, 'hex')
+        ${forUpdate ? "FOR UPDATE OF d" : ""}
       `,
-      [
-        device.deviceId,
-        device.wallet,
-        device.autoMintEnabled,
-        device.autoMintIntervalSeconds
-      ]
+      [lorawanDevEui]
     );
+
+    return result.rows[0] ? mapDeviceRow(result.rows[0]) : null;
+  }
+
+  async saveDevice(device) {
+    try {
+      await this.query(
+        `
+          UPDATE devices
+          SET
+            lorawan_dev_eui = CASE WHEN $2::text IS NULL THEN NULL ELSE decode($2::text, 'hex') END,
+            wallet = $3,
+            auto_mint_enabled = $4,
+            auto_mint_interval_seconds = $5,
+            updated_at = NOW()
+          WHERE device_id = decode($1, 'hex')
+        `,
+        [
+          device.deviceId,
+          device.lorawanDevEui,
+          device.wallet,
+          device.autoMintEnabled,
+          device.autoMintIntervalSeconds
+        ]
+      );
+    } catch (error) {
+      if (error.code === "23505" && String(error.constraint).includes("lorawan_dev_eui")) {
+        throw new RuleViolationError(
+          `LoRaWAN DevEUI ${device.lorawanDevEui} is already linked to another device`,
+          "lorawan_dev_eui_already_registered"
+        );
+      }
+
+      throw error;
+    }
 
     await this.query(
       `
@@ -424,10 +491,11 @@ export class PostgresStore {
 }
 
 function mapDeviceRow(row) {
-  return {
-    deviceId: row.device_id,
-    publicKeyRaw: Buffer.from(row.public_key_raw, "hex"),
-    wallet: row.wallet,
+    return {
+      deviceId: row.device_id,
+      publicKeyRaw: Buffer.from(row.public_key_raw, "hex"),
+      lorawanDevEui: row.lorawan_dev_eui,
+      wallet: row.wallet,
     lastNonce: row.last_nonce === null ? null : Number(row.last_nonce),
     autoMintEnabled: row.auto_mint_enabled,
     autoMintIntervalSeconds: row.auto_mint_interval_seconds,

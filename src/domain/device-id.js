@@ -6,10 +6,24 @@ export function deriveDeviceId(publicKeyRaw, bytes = 8) {
 }
 
 export function normalizeDeviceId(deviceId, bytes = 8) {
-  const normalized = typeof deviceId === "string" ? deviceId.trim().toLowerCase() : "";
+  return normalizeHexIdentifier(deviceId, {
+    bytes,
+    fieldName: "deviceId"
+  });
+}
+
+export function normalizeDevEui(devEui, bytes = 8) {
+  return normalizeHexIdentifier(devEui, {
+    bytes,
+    fieldName: "lorawanDevEui"
+  });
+}
+
+function normalizeHexIdentifier(value, { bytes, fieldName }) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
 
   if (!/^[0-9a-f]+$/.test(normalized) || normalized.length !== bytes * 2) {
-    throw new MalformedPayloadError(`deviceId must be ${bytes} bytes of lowercase hex`);
+    throw new MalformedPayloadError(`${fieldName} must be ${bytes} bytes of lowercase hex`);
   }
 
   return normalized;

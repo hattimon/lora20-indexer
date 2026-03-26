@@ -4,6 +4,7 @@ export function serializeDevice(device) {
   return {
     deviceId: device.deviceId,
     publicKeyRaw: hex(device.publicKeyRaw),
+    lorawanDevEui: device.lorawanDevEui ?? null,
     wallet: device.wallet,
     lastNonce: device.lastNonce,
     autoMintEnabled: device.autoMintEnabled,

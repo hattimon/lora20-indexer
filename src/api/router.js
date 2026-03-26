@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
+import { isChirpStackUplinkEvent, parseChirpStackUplink, assertChirpStackWebhookAuthorized } from "./chirpstack.js";
 import { serializeDevice, serializeEvent, serializeToken } from "../domain/serializers.js";
 import { bigintJsonReplacer } from "../protocol/encoding.js";
 import { AppError, MalformedPayloadError } from "../protocol/errors.js";
 
-export function createRequestHandler({ service, logger = console }) {
+export function createRequestHandler({ service, logger = console, chirpstackWebhookToken = "" }) {
   return async function requestHandler(req, res) {
     try {
       const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
@@ -26,6 +27,52 @@ export function createRequestHandler({ service, logger = console }) {
           status: result.status,
           event: serializeEvent(result.event)
         });
+      }
+
+      if (req.method === "POST" && url.pathname === "/integrations/chirpstack") {
+        assertChirpStackWebhookAuthorized({
+          req,
+          url,
+          expectedToken: chirpstackWebhookToken
+        });
+
+        const body = await readJson(req);
+        if (!isChirpStackUplinkEvent(body)) {
+          return sendJson(res, 202, {
+            status: "ignored",
+            reason: "unsupported_chirpstack_event"
+          });
+        }
+
+        const uplink = parseChirpStackUplink(body);
+        const device = await service.getDeviceByLorawanDevEui(uplink.lorawanDevEui);
+
+        if (!device) {
+          return sendJson(res, 404, {
+            error: {
+              code: "lorawan_device_not_linked",
+              message: `No registered device is linked to LoRaWAN DevEUI ${uplink.lorawanDevEui}`
+            }
+          });
+        }
+
+        const result = await service.ingestUplink({
+          deviceId: device.deviceId,
+          payload: uplink.payload,
+          receivedAt: uplink.receivedAt,
+          networkMetadata: uplink.networkMetadata
+        });
+
+        return sendJson(res, 202, {
+          status: result.status,
+          event: serializeEvent(result.event)
+        });
+      }
+
+      if (req.method === "PUT" && pathSegments.length === 3 && pathSegments[0] === "devices" && pathSegments[2] === "lorawan") {
+        const body = await readJson(req);
+        const device = await service.linkLorawanDevEui(pathSegments[1], body.devEui ?? body.lorawanDevEui);
+        return sendJson(res, 200, { device: serializeDevice(device) });
       }
 
       if (req.method === "GET" && pathSegments.length === 2 && pathSegments[0] === "tokens") {
@@ -80,8 +127,8 @@ export function createRequestHandler({ service, logger = console }) {
   };
 }
 
-export function createHttpServer({ service, logger = console }) {
-  return createServer(createRequestHandler({ service, logger }));
+export function createHttpServer({ service, logger = console, chirpstackWebhookToken = "" }) {
+  return createServer(createRequestHandler({ service, logger, chirpstackWebhookToken }));
 }
 
 async function readJson(req) {

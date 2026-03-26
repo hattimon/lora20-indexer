@@ -15,6 +15,7 @@ Phase 1 foundation for the off-chain indexer that treats signed LoRaWAN uplinks 
 - Strict per-device nonce checks
 - Deterministic state machine for token balances and supply
 - Webhook-style uplink receiver
+- ChirpStack HTTP webhook ingestion with `DevEUI -> deviceId` mapping
 - Minimal read API for tokens, balances, and transaction history
 - Persistent PostgreSQL store with transactional updates
 
@@ -79,7 +80,9 @@ curl http://127.0.0.1:3000/health
 ## API surface
 
 - `POST /devices/register`
+- `PUT /devices/:deviceId/lorawan`
 - `POST /uplinks`
+- `POST /integrations/chirpstack`
 - `GET /tokens/:tick`
 - `GET /balances/:deviceId/:tick`
 - `GET /transactions?deviceId=<hex>&tick=<TICK>&limit=50`
@@ -90,7 +93,16 @@ curl http://127.0.0.1:3000/health
 ```json
 {
   "publicKeyRaw": "hex-or-base64",
-  "wallet": "optional-solana-wallet"
+  "wallet": "optional-solana-wallet",
+  "lorawanDevEui": "optional-16-hex-dev-eui"
+}
+```
+
+### Link LoRaWAN DevEUI to an existing device
+
+```json
+{
+  "devEui": "6982686000009070"
 }
 ```
 
@@ -105,6 +117,45 @@ curl http://127.0.0.1:3000/health
     "fPort": 1,
     "gateway": "helium"
   }
+}
+```
+
+### ChirpStack HTTP integration
+
+Point the ChirpStack HTTP integration at:
+
+```text
+POST /integrations/chirpstack
+```
+
+The handler:
+
+- accepts ChirpStack uplink events with `deviceInfo.devEui` and `data`
+- resolves the registered lora20 device through the linked `lorawanDevEui`
+- verifies the embedded `Ed25519` signature before mutating state
+- ignores non-uplink events with `202 {"status":"ignored"}`
+
+If `CHIRPSTACK_WEBHOOK_TOKEN` is set, provide it as:
+
+- `Authorization: Bearer <token>`
+- or `X-ChirpStack-Token: <token>`
+- or `X-API-Key: <token>`
+- or `?token=<token>` as a fallback
+
+Minimal uplink body expected from ChirpStack:
+
+```json
+{
+  "time": "2026-03-26T23:41:24.000Z",
+  "deviceInfo": {
+    "devEui": "6982686000009070",
+    "deviceName": "heltec-v4-01"
+  },
+  "devAddr": "780002c7",
+  "fCnt": 1,
+  "fPort": 1,
+  "dr": 5,
+  "data": "hex-or-base64"
 }
 ```
 

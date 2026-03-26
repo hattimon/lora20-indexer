@@ -4,9 +4,14 @@ import { createStoreFromEnv } from "./store/create-store.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const host = process.env.HOST ?? "0.0.0.0";
+const chirpstackWebhookToken = process.env.CHIRPSTACK_WEBHOOK_TOKEN ?? "";
 const store = await createStoreFromEnv(process.env);
 const service = new IndexerService({ store });
-const server = createHttpServer({ service, logger: console });
+const server = createHttpServer({
+  service,
+  logger: console,
+  chirpstackWebhookToken
+});
 
 server.listen(port, host, () => {
   console.log(`lora20 indexer listening on http://${host}:${port}`);

@@ -17,15 +17,23 @@ export class MemoryStore {
     return callback(this);
   }
 
-  async registerDevice({ deviceId, publicKeyRaw, wallet = null }) {
+  async registerDevice({ deviceId, publicKeyRaw, wallet = null, lorawanDevEui = null }) {
     if (this.devices.has(deviceId)) {
       throw new RuleViolationError(`Device ${deviceId} is already registered`, "device_already_registered");
+    }
+
+    if (lorawanDevEui && Array.from(this.devices.values()).some((device) => device.lorawanDevEui === lorawanDevEui)) {
+      throw new RuleViolationError(
+        `LoRaWAN DevEUI ${lorawanDevEui} is already linked to another device`,
+        "lorawan_dev_eui_already_registered"
+      );
     }
 
     const now = new Date().toISOString();
     const device = {
       deviceId,
       publicKeyRaw: Buffer.from(publicKeyRaw),
+      lorawanDevEui,
       wallet,
       lastNonce: null,
       autoMintEnabled: false,
@@ -42,7 +50,23 @@ export class MemoryStore {
     return this.devices.get(deviceId) ?? null;
   }
 
+  async getDeviceByLorawanDevEui(lorawanDevEui) {
+    return Array.from(this.devices.values()).find((device) => device.lorawanDevEui === lorawanDevEui) ?? null;
+  }
+
   async saveDevice(device) {
+    if (
+      device.lorawanDevEui &&
+      Array.from(this.devices.values()).some(
+        (candidate) => candidate.deviceId !== device.deviceId && candidate.lorawanDevEui === device.lorawanDevEui
+      )
+    ) {
+      throw new RuleViolationError(
+        `LoRaWAN DevEUI ${device.lorawanDevEui} is already linked to another device`,
+        "lorawan_dev_eui_already_registered"
+      );
+    }
+
     device.updatedAt = new Date().toISOString();
     this.devices.set(device.deviceId, device);
     return device;

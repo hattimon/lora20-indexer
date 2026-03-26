@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS devices (
   device_id BYTEA PRIMARY KEY,
+  lorawan_dev_eui BYTEA,
   wallet TEXT,
   auto_mint_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   auto_mint_interval_seconds INTEGER,
@@ -69,3 +70,4 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_device_id ON events(device_id);
 CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
 CREATE INDEX IF NOT EXISTS idx_events_received_at ON events(received_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_lorawan_dev_eui ON devices(lorawan_dev_eui) WHERE lorawan_dev_eui IS NOT NULL;

@@ -10,7 +10,7 @@ import {
   RuleViolationError
 } from "../protocol/errors.js";
 import { parsePayload } from "../protocol/parser.js";
-import { deriveDeviceId, normalizeDeviceId } from "./device-id.js";
+import { deriveDeviceId, normalizeDevEui, normalizeDeviceId } from "./device-id.js";
 
 export class IndexerService {
   constructor({ store }) {
@@ -31,15 +31,33 @@ export class IndexerService {
     };
   }
 
-  async registerDevice({ publicKeyRaw, wallet = null }) {
+  async registerDevice({ publicKeyRaw, wallet = null, lorawanDevEui = null }) {
     const rawKey = decodeBinaryValue(publicKeyRaw, "publicKeyRaw", { expectedLength: 32 });
     const deviceId = deriveDeviceId(rawKey);
 
     return this.store.registerDevice({
       deviceId,
       publicKeyRaw: rawKey,
-      wallet
+      wallet,
+      lorawanDevEui: lorawanDevEui ? normalizeDevEui(lorawanDevEui) : null
     });
+  }
+
+  async linkLorawanDevEui(deviceId, lorawanDevEui) {
+    const normalizedDeviceId = normalizeDeviceId(deviceId);
+    const normalizedLorawanDevEui = normalizeDevEui(lorawanDevEui);
+    const device = await this.store.getDevice(normalizedDeviceId, { forUpdate: true });
+
+    if (!device) {
+      throw new DeviceNotFoundError(normalizedDeviceId);
+    }
+
+    device.lorawanDevEui = normalizedLorawanDevEui;
+    return this.store.saveDevice(device);
+  }
+
+  async getDeviceByLorawanDevEui(lorawanDevEui) {
+    return this.store.getDeviceByLorawanDevEui(normalizeDevEui(lorawanDevEui));
   }
 
   async ingestUplink({ deviceId, payload, receivedAt, networkMetadata = null }) {

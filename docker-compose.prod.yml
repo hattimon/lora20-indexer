@@ -11,6 +11,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       STORE_BACKEND: ${STORE_BACKEND:-postgres}
       DATABASE_URL: ${DATABASE_URL:-postgresql://lora20:lora20@postgres:5432/lora20}
+      CHIRPSTACK_WEBHOOK_TOKEN: ${CHIRPSTACK_WEBHOOK_TOKEN:-}
     ports:
       - "${PORT:-3000}:3000"
     healthcheck:
