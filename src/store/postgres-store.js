@@ -302,8 +302,9 @@ export class PostgresStore {
   async listTokens({ search, limit = 100 } = {}) {
     const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
     const normalizedSearch = search ? String(search).toUpperCase() : null;
-    const params = [normalizedSearch, safeLimit];
-    const where = normalizedSearch ? "WHERE tick LIKE ($1 || '%')" : "";
+    const params = normalizedSearch ? [normalizedSearch, safeLimit] : [safeLimit];
+    const where = normalizedSearch ? "WHERE tick LIKE ($1::text || '%')" : "";
+    const limitPlaceholder = normalizedSearch ? "$2" : "$1";
 
     const result = await this.query(
       `
@@ -318,7 +319,7 @@ export class PostgresStore {
         FROM tokens
         ${where}
         ORDER BY updated_at DESC, tick ASC
-        LIMIT $2
+        LIMIT ${limitPlaceholder}
       `,
       params
     );
