@@ -1,0 +1,8 @@
+{
+  admin off
+}
+
+{$CADDY_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy indexer:3000
+}

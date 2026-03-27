@@ -57,6 +57,29 @@ Notes:
 - Indexer state persists across restarts in PostgreSQL.
 - Do not expose PostgreSQL publicly unless you have a reason to do so.
 
+### HTTPS with Caddy
+
+An optional `caddy` profile is included for public HTTPS termination:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile https up -d --build
+```
+
+Requirements:
+
+- `CADDY_DOMAIN` must point to your public IP with a public DNS `A` record.
+- Public ports `80/tcp` and `443/tcp` must reach the machine running Docker.
+- With VirtualBox NAT, forward host `80 -> guest 80` and host `443 -> guest 443`.
+- On your router, forward public `80/443 -> Windows host 192.168.0.2:80/443`.
+
+Recommended webhook URL for ChirpStack:
+
+```text
+https://<your-domain>/integrations/chirpstack
+```
+
+Do not use raw public IP for production HTTPS. Use a domain or a dynamic DNS hostname such as a DuckDNS subdomain.
+
 ### Debian quick install
 
 ```bash
@@ -141,6 +164,14 @@ If `CHIRPSTACK_WEBHOOK_TOKEN` is set, provide it as:
 - or `X-ChirpStack-Token: <token>`
 - or `X-API-Key: <token>`
 - or `?token=<token>` as a fallback
+
+Before enabling the webhook, link the LoRaWAN `DevEUI` from ChirpStack to the already registered cryptographic `deviceId`:
+
+```bash
+curl -X PUT http://127.0.0.1:3000/devices/<deviceId>/lorawan \
+  -H "Content-Type: application/json" \
+  -d '{"devEui":"6982686000009070"}'
+```
 
 Minimal uplink body expected from ChirpStack:
 
