@@ -304,7 +304,7 @@ export class PostgresStore {
     const normalizedSearch = search ? String(search).toUpperCase() : null;
     const params = normalizedSearch ? [normalizedSearch, safeLimit] : [safeLimit];
     const where = normalizedSearch ? "WHERE tick LIKE ($1::text || '%')" : "";
-    const limitPlaceholder = normalizedSearch ? "$2" : "$1";
+    const limitPlaceholder = normalizedSearch ? "$2::int" : "$1::int";
 
     const result = await this.query(
       `
@@ -381,7 +381,7 @@ export class PostgresStore {
         WHERE b.device_id = decode($1, 'hex')
           AND b.balance <> 0
         ORDER BY b.updated_at DESC, b.tick ASC
-        LIMIT $2
+        LIMIT $2::int
       `,
       [deviceId, safeLimit]
     );
@@ -530,7 +530,7 @@ export class PostgresStore {
         FROM events
         ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
         ORDER BY received_at DESC, created_at DESC
-        LIMIT $${params.length}
+        LIMIT $${params.length}::int
       `,
       params
     );
