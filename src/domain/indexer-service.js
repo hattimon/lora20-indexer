@@ -129,8 +129,19 @@ export class IndexerService {
     return (await this.store.getToken(String(tick).toUpperCase())) ?? null;
   }
 
+  async listTokens({ search, limit } = {}) {
+    return this.store.listTokens({
+      search: search ? String(search).toUpperCase() : undefined,
+      limit
+    });
+  }
+
   async getBalance(deviceId, tick) {
     return this.store.getBalance(normalizeDeviceId(deviceId), String(tick).toUpperCase());
+  }
+
+  async listBalancesForDevice(deviceId, { limit } = {}) {
+    return this.store.listBalances(normalizeDeviceId(deviceId), { limit });
   }
 
   async listTransactions({ deviceId, tick, limit }) {

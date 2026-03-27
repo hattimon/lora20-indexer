@@ -21,8 +21,14 @@ function createStubService() {
       async getToken() {
         return null;
       },
+      async listTokens() {
+        return [];
+      },
       async getBalance() {
         return 0n;
+      },
+      async listBalancesForDevice() {
+        return [];
       },
       async listTransactions() {
         return [];
@@ -215,5 +221,58 @@ test("links a LoRaWAN DevEUI to an already registered device", async () => {
       deviceId: "cbbe9a389f75c9b6",
       devEui: "6982686000009070"
     });
+  });
+});
+
+test("lists deployed tokens for dashboard consumption", async () => {
+  const { service } = createStubService();
+  service.listTokens = async () => [
+    {
+      tick: "LORA",
+      createdByDeviceId: "cbbe9a389f75c9b6",
+      maxSupply: 21000000n,
+      limitPerMint: 100n,
+      totalSupply: 1n,
+      createdAt: "2026-03-26T00:00:00.000Z",
+      updatedAt: "2026-03-26T00:00:00.000Z"
+    }
+  ];
+
+  await withServer({ service, logger: { error() {} } }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/tokens?limit=20`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.tokens.length, 1);
+    assert.equal(body.tokens[0].tick, "LORA");
+    assert.equal(body.tokens[0].limitPerMint, "100");
+  });
+});
+
+test("lists balances for a linked device", async () => {
+  const { service } = createStubService();
+  service.listBalancesForDevice = async () => [
+    {
+      tick: "LORA",
+      balance: 250n,
+      token: {
+        tick: "LORA",
+        createdByDeviceId: "cbbe9a389f75c9b6",
+        maxSupply: 21000000n,
+        limitPerMint: 100n,
+        totalSupply: 500n,
+        createdAt: "2026-03-26T00:00:00.000Z",
+        updatedAt: "2026-03-26T00:00:00.000Z"
+      }
+    }
+  ];
+
+  await withServer({ service, logger: { error() {} } }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/devices/cbbe9a389f75c9b6/balances`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.deviceId, "cbbe9a389f75c9b6");
+    assert.equal(body.balances.length, 1);
+    assert.equal(body.balances[0].balance, "250");
+    assert.equal(body.balances[0].token.limitPerMint, "100");
   });
 });

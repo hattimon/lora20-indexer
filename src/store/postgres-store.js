@@ -299,6 +299,33 @@ export class PostgresStore {
     return result.rows[0] ? mapTokenRow(result.rows[0]) : null;
   }
 
+  async listTokens({ search, limit = 100 } = {}) {
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
+    const normalizedSearch = search ? String(search).toUpperCase() : null;
+    const params = [normalizedSearch, safeLimit];
+    const where = normalizedSearch ? "WHERE tick LIKE ($1 || '%')" : "";
+
+    const result = await this.query(
+      `
+        SELECT
+          tick,
+          encode(created_by_device_id, 'hex') AS created_by_device_id,
+          max_supply,
+          limit_per_mint,
+          total_supply,
+          created_at,
+          updated_at
+        FROM tokens
+        ${where}
+        ORDER BY updated_at DESC, tick ASC
+        LIMIT $2
+      `,
+      params
+    );
+
+    return result.rows.map(mapTokenRow);
+  }
+
   async saveToken(token) {
     await this.query(
       `
@@ -332,6 +359,37 @@ export class PostgresStore {
     );
 
     return result.rows[0] ? BigInt(result.rows[0].balance) : 0n;
+  }
+
+  async listBalances(deviceId, { limit = 100 } = {}) {
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
+    const result = await this.query(
+      `
+        SELECT
+          b.tick,
+          b.balance,
+          t.tick AS token_tick,
+          encode(t.created_by_device_id, 'hex') AS created_by_device_id,
+          t.max_supply,
+          t.limit_per_mint,
+          t.total_supply,
+          t.created_at,
+          t.updated_at
+        FROM balances b
+        LEFT JOIN tokens t ON t.tick = b.tick
+        WHERE b.device_id = decode($1, 'hex')
+          AND b.balance <> 0
+        ORDER BY b.updated_at DESC, b.tick ASC
+        LIMIT $2
+      `,
+      [deviceId, safeLimit]
+    );
+
+    return result.rows.map((row) => ({
+      tick: row.tick.trim(),
+      balance: BigInt(row.balance),
+      token: row.token_tick ? mapTokenRow(row) : null
+    }));
   }
 
   async addBalance(deviceId, tick, delta) {

@@ -56,6 +56,7 @@ Notes:
 - `STORE_BACKEND=postgres` is the default in `.env.example`.
 - Indexer state persists across restarts in PostgreSQL.
 - Do not expose PostgreSQL publicly unless you have a reason to do so.
+- If your dashboard is hosted on another origin such as GitHub Pages, set `CORS_ALLOWED_ORIGINS` to that dashboard URL.
 
 ### HTTPS with Caddy
 
@@ -79,6 +80,16 @@ https://<your-domain>/integrations/chirpstack
 ```
 
 Do not use raw public IP for production HTTPS. Use a domain or a dynamic DNS hostname such as a DuckDNS subdomain.
+
+### Cross-origin browser dashboard access
+
+If you host a static dashboard on GitHub Pages or another origin, allow browser access explicitly:
+
+```env
+CORS_ALLOWED_ORIGINS=https://<your-dashboard-origin>
+```
+
+You can provide multiple origins as a comma-separated list.
 
 ### Debian quick install
 

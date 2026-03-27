@@ -81,6 +81,16 @@ export class MemoryStore {
     return this.tokens.get(tick) ?? null;
   }
 
+  async listTokens({ search, limit = 100 } = {}) {
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
+    const normalizedSearch = search ? String(search).toUpperCase() : "";
+
+    return Array.from(this.tokens.values())
+      .filter((token) => !normalizedSearch || token.tick.startsWith(normalizedSearch))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.tick.localeCompare(right.tick))
+      .slice(0, safeLimit);
+  }
+
   async saveToken(token) {
     token.updatedAt = new Date().toISOString();
     this.tokens.set(token.tick, token);
@@ -89,6 +99,23 @@ export class MemoryStore {
 
   async getBalance(deviceId, tick) {
     return this.balances.get(balanceKey(deviceId, tick)) ?? 0n;
+  }
+
+  async listBalances(deviceId, { limit = 100 } = {}) {
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
+
+    return Array.from(this.balances.entries())
+      .filter(([key, balance]) => key.startsWith(`${deviceId}:`) && balance !== 0n)
+      .map(([key, balance]) => {
+        const tick = key.slice(deviceId.length + 1);
+        return {
+          tick,
+          balance,
+          token: this.tokens.get(tick) ?? null
+        };
+      })
+      .sort((left, right) => right.balance - left.balance || left.tick.localeCompare(right.tick))
+      .slice(0, safeLimit);
   }
 
   async addBalance(deviceId, tick, delta) {

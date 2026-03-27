@@ -26,6 +26,14 @@ export function serializeToken(token) {
   };
 }
 
+export function serializeBalanceEntry(entry) {
+  return {
+    tick: entry.tick,
+    balance: entry.balance.toString(),
+    token: entry.token ? serializeToken(entry.token) : null
+  };
+}
+
 export function serializeEvent(event) {
   return {
     id: event.id,
