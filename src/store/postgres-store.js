@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import pg from "pg";
-import { OP_NAMES } from "../protocol/constants.js";
+import {
+  CHAT_RETENTION_DAYS,
+  CHAT_RETENTION_SOFT_LIMIT,
+  OP_CODES,
+  OP_NAMES
+} from "../protocol/constants.js";
 import { hex } from "../protocol/encoding.js";
 import { RuleViolationError } from "../protocol/errors.js";
 
@@ -486,6 +491,10 @@ export class PostgresStore {
       ]
     );
 
+    if (event.op === OP_CODES.MESSAGE) {
+      await this.pruneChatEvents();
+    }
+
     return event;
   }
 
@@ -552,6 +561,34 @@ export class PostgresStore {
     if (!this.client && this.pool) {
       await this.pool.end();
     }
+  }
+
+  async pruneChatEvents() {
+    const countResult = await this.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM events
+        WHERE op = $1
+      `,
+      [OP_CODES.MESSAGE]
+    );
+
+    const total = Number(countResult.rows[0]?.total || 0);
+    if (total <= CHAT_RETENTION_SOFT_LIMIT) {
+      return 0;
+    }
+
+    const cutoff = new Date(Date.now() - CHAT_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const deleteResult = await this.query(
+      `
+        DELETE FROM events
+        WHERE op = $1
+          AND COALESCE(received_at, created_at) < $2
+      `,
+      [OP_CODES.MESSAGE, cutoff]
+    );
+
+    return deleteResult.rowCount || 0;
   }
 
   async query(text, params = []) {

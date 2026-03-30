@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { verifyEd25519Signature } from "../crypto/ed25519.js";
-import { OP_CODES } from "../protocol/constants.js";
+import {
+  CHAT_RETENTION_DAYS,
+  CHAT_RETENTION_SOFT_LIMIT,
+  MESSAGE_SCOPES,
+  OP_CODES,
+  PUBLIC_CHAT_DEVICE_ID
+} from "../protocol/constants.js";
 import { decodeBinaryValue, hex } from "../protocol/encoding.js";
 import {
   AuthenticationError,
@@ -154,22 +160,41 @@ export class IndexerService {
   }
 
   async listMessages({ deviceId, peerDeviceId, limit }) {
-    const normalizedDeviceId = normalizeDeviceId(deviceId);
+    const normalizedDeviceId = deviceId ? normalizeDeviceId(deviceId) : null;
     const normalizedPeerDeviceId = peerDeviceId ? normalizeDeviceId(peerDeviceId) : null;
     const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 50;
     const messages = await this.store.listTransactions({
-      deviceId: normalizedDeviceId,
-      limit: safeLimit * 4,
+      limit: Math.max(safeLimit * 10, 200),
       op: OP_CODES.MESSAGE
     });
+    const scope = normalizedPeerDeviceId ? MESSAGE_SCOPES.DIRECT : MESSAGE_SCOPES.PUBLIC;
 
     return messages
-      .filter(
-        (event) =>
+      .filter((event) => event.status === "accepted")
+      .filter((event) => {
+        const isPublicMessage = event.recipientDeviceId === PUBLIC_CHAT_DEVICE_ID;
+
+        if (scope === MESSAGE_SCOPES.PUBLIC) {
+          return isPublicMessage;
+        }
+
+        if (!normalizedDeviceId || isPublicMessage) {
+          return false;
+        }
+
+        const involvesActiveDevice =
+          event.deviceId === normalizedDeviceId || event.recipientDeviceId === normalizedDeviceId;
+
+        if (!involvesActiveDevice) {
+          return false;
+        }
+
+        return (
           !normalizedPeerDeviceId ||
           event.deviceId === normalizedPeerDeviceId ||
           event.recipientDeviceId === normalizedPeerDeviceId
-      )
+        );
+      })
       .slice(0, safeLimit);
   }
 
@@ -351,9 +376,10 @@ export class IndexerService {
   }
 
   async handleMessage({ store, device, parsedMessage, payloadBuffer, receivedAt, networkMetadata }) {
-    const recipientDevice = await store.getDevice(parsedMessage.recipientDeviceId);
+    const isPublicMessage = parsedMessage.recipientDeviceId === PUBLIC_CHAT_DEVICE_ID;
+    const recipientDevice = isPublicMessage ? null : await store.getDevice(parsedMessage.recipientDeviceId);
 
-    if (!recipientDevice) {
+    if (!isPublicMessage && !recipientDevice) {
       throw new RuleViolationError(
         `Recipient device ${parsedMessage.recipientDeviceId} is not registered`,
         "recipient_not_found"
@@ -395,6 +421,10 @@ export class IndexerService {
           ? {
               messageText: parsedMessage.messageText,
               messageCodec: "lora6",
+              messageScope:
+                parsedMessage.recipientDeviceId === PUBLIC_CHAT_DEVICE_ID
+                  ? MESSAGE_SCOPES.PUBLIC
+                  : MESSAGE_SCOPES.DIRECT,
               messageLength: parsedMessage.messageLength,
               packedBytes: parsedMessage.messagePacked?.length ?? null
             }
@@ -405,6 +435,14 @@ export class IndexerService {
       payloadDigest: createHash("sha256").update(payloadBuffer).digest("hex"),
       receivedAt,
       createdAt: new Date().toISOString()
+    };
+  }
+
+  static getChatRetentionPolicy() {
+    return {
+      softLimit: CHAT_RETENTION_SOFT_LIMIT,
+      retentionDays: CHAT_RETENTION_DAYS,
+      mode: "soft"
     };
   }
 }

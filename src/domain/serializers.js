@@ -39,6 +39,7 @@ export function serializeEvent(event) {
   const messageCodec = typeof event.config?.messageCodec === "string" ? event.config.messageCodec : null;
   const messageLength = Number.isInteger(event.config?.messageLength) ? event.config.messageLength : null;
   const packedBytes = Number.isInteger(event.config?.packedBytes) ? event.config.packedBytes : null;
+  const messageScope = typeof event.config?.messageScope === "string" ? event.config.messageScope : null;
 
   return {
     id: event.id,
@@ -59,6 +60,7 @@ export function serializeEvent(event) {
     messageCodec,
     messageLength,
     packedBytes,
+    messageScope,
     payloadHex: event.payloadHex,
     signatureHex: event.signatureHex,
     payloadDigest: event.payloadDigest ?? null,

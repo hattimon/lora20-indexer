@@ -1,3 +1,8 @@
+import {
+  CHAT_RETENTION_DAYS,
+  CHAT_RETENTION_SOFT_LIMIT,
+  OP_CODES
+} from "../protocol/constants.js";
 import { RuleViolationError } from "../protocol/errors.js";
 
 function balanceKey(deviceId, tick) {
@@ -126,6 +131,7 @@ export class MemoryStore {
 
   async appendEvent(event) {
     this.events.push(event);
+    this.pruneChatEvents();
     return event;
   }
 
@@ -144,4 +150,21 @@ export class MemoryStore {
   async ping() {}
 
   async close() {}
+
+  pruneChatEvents() {
+    const chatCount = this.events.reduce((count, event) => count + (event.op === OP_CODES.MESSAGE ? 1 : 0), 0);
+    if (chatCount <= CHAT_RETENTION_SOFT_LIMIT) {
+      return;
+    }
+
+    const cutoff = Date.now() - CHAT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    this.events = this.events.filter((event) => {
+      if (event.op !== OP_CODES.MESSAGE) {
+        return true;
+      }
+
+      const timestamp = Date.parse(event.receivedAt || event.createdAt || 0);
+      return Number.isNaN(timestamp) || timestamp >= cutoff;
+    });
+  }
 }

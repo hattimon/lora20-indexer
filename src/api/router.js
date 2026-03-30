@@ -148,14 +148,16 @@ export function createRequestHandler({ service, logger = console, chirpstackWebh
       if (req.method === "GET" && url.pathname === "/messages") {
         const limit = url.searchParams.get("limit");
         const parsedLimit = limit === null ? undefined : Number.parseInt(limit, 10);
+        const scope = url.searchParams.get("scope");
         const messages = await service.listMessages({
-          deviceId: url.searchParams.get("deviceId"),
-          peerDeviceId: url.searchParams.get("peerDeviceId") ?? undefined,
+          deviceId: scope === "public" ? undefined : (url.searchParams.get("deviceId") ?? undefined),
+          peerDeviceId: scope === "public" ? undefined : (url.searchParams.get("peerDeviceId") ?? undefined),
           limit: Number.isNaN(parsedLimit) ? undefined : parsedLimit
         });
 
         return sendJson(res, 200, {
-          messages: messages.map(serializeEvent)
+          messages: messages.map(serializeEvent),
+          retention: service.constructor.getChatRetentionPolicy()
         }, corsHeaders);
       }
 

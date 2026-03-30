@@ -2,7 +2,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { exportRawEd25519PublicKey } from "../src/crypto/ed25519.js";
 import { deriveDeviceId } from "../src/domain/device-id.js";
 import { encodePackedMessage } from "../src/protocol/chat-codec.js";
-import { AUTO_MINT_ENABLED_FLAG, OP_CODES } from "../src/protocol/constants.js";
+import { AUTO_MINT_ENABLED_FLAG, OP_CODES, PUBLIC_CHAT_DEVICE_ID } from "../src/protocol/constants.js";
 
 export function createDeviceIdentity() {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -67,6 +67,15 @@ export function buildMessagePayload({ recipientDeviceId, text, nonce, privateKey
   packed.copy(payload, 14);
 
   return signPayload(payload, privateKey);
+}
+
+export function buildPublicMessagePayload({ text, nonce, privateKey }) {
+  return buildMessagePayload({
+    recipientDeviceId: PUBLIC_CHAT_DEVICE_ID,
+    text,
+    nonce,
+    privateKey
+  });
 }
 
 function signPayload(unsignedPayload, privateKey) {

@@ -6,6 +6,15 @@ export const OP_CODES = Object.freeze({
   CONFIG: 0x10
 });
 
+export const MESSAGE_SCOPES = Object.freeze({
+  DIRECT: "direct",
+  PUBLIC: "public"
+});
+
+export const PUBLIC_CHAT_DEVICE_ID = "0000000000000000";
+export const CHAT_RETENTION_DAYS = 7;
+export const CHAT_RETENTION_SOFT_LIMIT = 1000;
+
 export const OP_NAMES = Object.freeze({
   [OP_CODES.DEPLOY]: "DEPLOY",
   [OP_CODES.MINT]: "MINT",

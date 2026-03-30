@@ -6,6 +6,7 @@ import { MemoryStore } from "../src/store/memory-store.js";
 import {
   buildDeployPayload,
   buildMessagePayload,
+  buildPublicMessagePayload,
   buildMintPayload,
   buildTransferPayload,
   createDeviceIdentity
@@ -228,4 +229,40 @@ test("accepts compact chat messages and keeps them out of transaction history", 
   assert.equal(messages[0].opName, "MESSAGE");
   assert.equal(messages[0].recipientDeviceId, recipientRegistered.deviceId);
   assert.equal(messages[0].config.messageText, "halo mini-burlap");
+});
+
+test("lists public chat separately and keeps direct threads isolated", async () => {
+  const service = createService();
+  const sender = createDeviceIdentity();
+  const peer = createDeviceIdentity();
+
+  await service.registerDevice({
+    publicKeyRaw: sender.publicKeyRaw
+  });
+  await service.registerDevice({
+    publicKeyRaw: peer.publicKeyRaw
+  });
+
+  await service.ingestUplink({
+    deviceId: sender.deviceId,
+    payload: buildPublicMessagePayload({
+      text: "halo wszystkim",
+      nonce: 1,
+      privateKey: sender.privateKey
+    }),
+    receivedAt: "2026-03-30T10:00:00.000Z"
+  });
+
+  const publicMessages = await service.listMessages({ limit: 10 });
+  const directMessages = await service.listMessages({
+    deviceId: sender.deviceId,
+    peerDeviceId: peer.deviceId,
+    limit: 10
+  });
+
+  assert.equal(publicMessages.length, 1);
+  assert.equal(publicMessages[0].config.messageText, "halo wszystkim");
+  assert.equal(publicMessages[0].config.messageScope, "public");
+  assert.equal(publicMessages[0].deviceId, sender.deviceId);
+  assert.equal(directMessages.length, 0);
 });
