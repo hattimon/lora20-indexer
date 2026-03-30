@@ -129,12 +129,14 @@ export class MemoryStore {
     return event;
   }
 
-  async listTransactions({ deviceId, tick, limit = 50 } = {}) {
+  async listTransactions({ deviceId, tick, limit = 50, op = null, excludeOp = null } = {}) {
     const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 50;
 
     return this.events
       .filter((event) => !deviceId || event.deviceId === deviceId || event.recipientDeviceId === deviceId)
       .filter((event) => !tick || event.tick === tick)
+      .filter((event) => op === null || event.op === op)
+      .filter((event) => excludeOp === null || event.op !== excludeOp)
       .slice(-safeLimit)
       .reverse();
   }

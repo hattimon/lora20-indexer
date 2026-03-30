@@ -489,7 +489,7 @@ export class PostgresStore {
     return event;
   }
 
-  async listTransactions({ deviceId, tick, limit = 50 } = {}) {
+  async listTransactions({ deviceId, tick, limit = 50, op = null, excludeOp = null } = {}) {
     const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 50;
     const clauses = [];
     const params = [];
@@ -502,6 +502,16 @@ export class PostgresStore {
     if (tick) {
       params.push(tick);
       clauses.push(`tick = $${params.length}`);
+    }
+
+    if (op !== null && op !== undefined) {
+      params.push(op);
+      clauses.push(`op = $${params.length}`);
+    }
+
+    if (excludeOp !== null && excludeOp !== undefined) {
+      params.push(excludeOp);
+      clauses.push(`op <> $${params.length}`);
     }
 
     params.push(safeLimit);

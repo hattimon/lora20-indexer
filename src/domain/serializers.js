@@ -35,6 +35,11 @@ export function serializeBalanceEntry(entry) {
 }
 
 export function serializeEvent(event) {
+  const messageText = typeof event.config?.messageText === "string" ? event.config.messageText : null;
+  const messageCodec = typeof event.config?.messageCodec === "string" ? event.config.messageCodec : null;
+  const messageLength = Number.isInteger(event.config?.messageLength) ? event.config.messageLength : null;
+  const packedBytes = Number.isInteger(event.config?.packedBytes) ? event.config.packedBytes : null;
+
   return {
     id: event.id,
     status: event.status,
@@ -50,6 +55,10 @@ export function serializeEvent(event) {
     deviceId: event.deviceId ?? null,
     recipientDeviceId: event.recipientDeviceId ?? null,
     config: event.config ?? null,
+    messageText,
+    messageCodec,
+    messageLength,
+    packedBytes,
     payloadHex: event.payloadHex,
     signatureHex: event.signatureHex,
     payloadDigest: event.payloadDigest ?? null,

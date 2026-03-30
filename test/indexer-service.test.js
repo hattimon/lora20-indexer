@@ -5,6 +5,7 @@ import { AuthenticationError, ReplayDetectedError, RuleViolationError } from "..
 import { MemoryStore } from "../src/store/memory-store.js";
 import {
   buildDeployPayload,
+  buildMessagePayload,
   buildMintPayload,
   buildTransferPayload,
   createDeviceIdentity
@@ -192,4 +193,39 @@ test("rejects transfers when sender balance is insufficient", async () => {
       return true;
     }
   );
+});
+
+test("accepts compact chat messages and keeps them out of transaction history", async () => {
+  const service = createService();
+  const sender = createDeviceIdentity();
+  const recipient = createDeviceIdentity();
+  const senderRegistered = await service.registerDevice({
+    publicKeyRaw: sender.publicKeyRaw
+  });
+  const recipientRegistered = await service.registerDevice({
+    publicKeyRaw: recipient.publicKeyRaw
+  });
+
+  await service.ingestUplink({
+    deviceId: senderRegistered.deviceId,
+    payload: buildMessagePayload({
+      recipientDeviceId: recipientRegistered.deviceId,
+      text: "halo mini-burlap",
+      nonce: 1,
+      privateKey: sender.privateKey
+    })
+  });
+
+  const history = await service.listTransactions({ deviceId: senderRegistered.deviceId, limit: 10 });
+  const messages = await service.listMessages({
+    deviceId: senderRegistered.deviceId,
+    peerDeviceId: recipientRegistered.deviceId,
+    limit: 10
+  });
+
+  assert.equal(history.length, 0);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].opName, "MESSAGE");
+  assert.equal(messages[0].recipientDeviceId, recipientRegistered.deviceId);
+  assert.equal(messages[0].config.messageText, "halo mini-burlap");
 });

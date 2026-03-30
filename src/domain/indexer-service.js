@@ -148,8 +148,29 @@ export class IndexerService {
     return this.store.listTransactions({
       deviceId: deviceId ? normalizeDeviceId(deviceId) : undefined,
       tick: tick ? String(tick).toUpperCase() : undefined,
-      limit
+      limit,
+      excludeOp: OP_CODES.MESSAGE
     });
+  }
+
+  async listMessages({ deviceId, peerDeviceId, limit }) {
+    const normalizedDeviceId = normalizeDeviceId(deviceId);
+    const normalizedPeerDeviceId = peerDeviceId ? normalizeDeviceId(peerDeviceId) : null;
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 50;
+    const messages = await this.store.listTransactions({
+      deviceId: normalizedDeviceId,
+      limit: safeLimit * 4,
+      op: OP_CODES.MESSAGE
+    });
+
+    return messages
+      .filter(
+        (event) =>
+          !normalizedPeerDeviceId ||
+          event.deviceId === normalizedPeerDeviceId ||
+          event.recipientDeviceId === normalizedPeerDeviceId
+      )
+      .slice(0, safeLimit);
   }
 
   assertFreshNonce(device, nonce) {
@@ -168,6 +189,9 @@ export class IndexerService {
 
       case OP_CODES.TRANSFER:
         return this.handleTransfer({ store, device, parsedMessage, payloadBuffer, receivedAt, networkMetadata });
+
+      case OP_CODES.MESSAGE:
+        return this.handleMessage({ store, device, parsedMessage, payloadBuffer, receivedAt, networkMetadata });
 
       case OP_CODES.CONFIG:
         return this.handleConfig({ store, device, parsedMessage, payloadBuffer, receivedAt, networkMetadata });
@@ -326,6 +350,31 @@ export class IndexerService {
     );
   }
 
+  async handleMessage({ store, device, parsedMessage, payloadBuffer, receivedAt, networkMetadata }) {
+    const recipientDevice = await store.getDevice(parsedMessage.recipientDeviceId);
+
+    if (!recipientDevice) {
+      throw new RuleViolationError(
+        `Recipient device ${parsedMessage.recipientDeviceId} is not registered`,
+        "recipient_not_found"
+      );
+    }
+
+    device.lastNonce = parsedMessage.nonce;
+    await store.saveDevice(device);
+
+    return store.appendEvent(
+      this.buildEvent({
+        status: "accepted",
+        deviceId: device.deviceId,
+        parsedMessage,
+        payloadBuffer,
+        receivedAt,
+        networkMetadata
+      })
+    );
+  }
+
   buildEvent({ status, rejectionReason = null, deviceId, parsedMessage, payloadBuffer, receivedAt, networkMetadata }) {
     return {
       id: randomUUID(),
@@ -340,7 +389,16 @@ export class IndexerService {
       limitPerMint: parsedMessage.limitPerMint ?? null,
       nonce: parsedMessage.nonce ?? null,
       recipientDeviceId: parsedMessage.recipientDeviceId ?? null,
-      config: parsedMessage.config ?? null,
+      config:
+        parsedMessage.config ??
+        (parsedMessage.messageText
+          ? {
+              messageText: parsedMessage.messageText,
+              messageCodec: "lora6",
+              messageLength: parsedMessage.messageLength,
+              packedBytes: parsedMessage.messagePacked?.length ?? null
+            }
+          : null),
       payloadHex: hex(payloadBuffer),
       signatureHex: hex(parsedMessage.signature),
       networkMetadata,

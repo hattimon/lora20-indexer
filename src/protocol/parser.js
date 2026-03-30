@@ -1,4 +1,5 @@
 import { AUTO_MINT_ENABLED_FLAG, LENGTHS, OP_CODES, OP_NAMES, VALID_TICK_REGEX } from "./constants.js";
+import { decodePackedMessage, getPackedByteLength } from "./chat-codec.js";
 import { MalformedPayloadError } from "./errors.js";
 
 export function parsePayload(input) {
@@ -63,6 +64,45 @@ export function parsePayload(input) {
         unsignedPayload: Buffer.from(unsignedPayload),
         payload
       };
+
+    case OP_CODES.MESSAGE: {
+      const minimumLength =
+        LENGTHS.OP +
+        LENGTHS.DEVICE_ID +
+        LENGTHS.NONCE +
+        LENGTHS.MESSAGE_LENGTH +
+        LENGTHS.SIGNATURE;
+
+      if (payload.length <= minimumLength) {
+        throw new MalformedPayloadError("MESSAGE payload is too short");
+      }
+
+      const messageLength = payload.readUInt8(13);
+      if (messageLength <= 0) {
+        throw new MalformedPayloadError("MESSAGE payload must include at least one character");
+      }
+      const expectedPackedBytes = getPackedByteLength(messageLength);
+      const packedMessage = payload.subarray(14, signatureOffset);
+
+      if (packedMessage.length !== expectedPackedBytes) {
+        throw new MalformedPayloadError(
+          `Expected ${expectedPackedBytes} packed chat bytes, received ${packedMessage.length}`
+        );
+      }
+
+      return {
+        op,
+        opName: OP_NAMES[op],
+        recipientDeviceId: payload.subarray(1, 9).toString("hex"),
+        nonce: payload.readUInt32BE(9),
+        messageLength,
+        messagePacked: Buffer.from(packedMessage),
+        messageText: decodePackedMessage(packedMessage, messageLength),
+        signature: Buffer.from(signature),
+        unsignedPayload: Buffer.from(unsignedPayload),
+        payload
+      };
+    }
 
     case OP_CODES.CONFIG:
       assertLength(payload, LENGTHS.OP + LENGTHS.FLAGS + LENGTHS.INTERVAL + LENGTHS.NONCE + LENGTHS.SIGNATURE);
